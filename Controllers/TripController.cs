@@ -16,11 +16,13 @@ namespace DiniM3ak.Controllers
     {
         private readonly AppDbContext _context;
         private readonly AuthUtils _authUtils;
+        private readonly ILogger<TripController> _logger;
 
-        public TripController(AppDbContext context, AuthUtils authUtils)
+        public TripController(AppDbContext context, AuthUtils authUtils, ILogger<TripController> logger)
         {
             _context = context;
             _authUtils = authUtils;
+            _logger = logger;
         }
 
 
@@ -119,7 +121,7 @@ namespace DiniM3ak.Controllers
                 TripPrice = tripDto.TripPrice,
                 TotalSeats = tripDto.TotalSeats,
                 RemainingSeats = tripDto.TotalSeats,
-                TripDate = tripDto.TripDate,
+                TripDate = tripDto.TripDate.AddDays(1),
                 Status = TripStatus.OPEN.ToString(),
                 Car = car,
                 CardId = car.Id
@@ -132,35 +134,7 @@ namespace DiniM3ak.Controllers
         }
 
 
-        [HttpGet("To")]
-        public async Task<ActionResult<List<Trip>>> GetTripByDestinationCity([FromQuery] string destinationCity)
-        {
-
-            var trips = await _context.Trips  
-                .Include(o => o.Owner)
-                .Include(o => o.FromCity)
-                .Include(o => o.ToCity)
-                .Where(t => t.ToCity.CityName.ToLower().Trim() == destinationCity.ToLower().Trim())
-               
-                .ToListAsync();
-
-            return Ok(trips);
-        }
-
-
-        [HttpGet("From")]
-        public async Task<ActionResult<List<Trip>>> GetTripByFromCity([FromQuery] string fromCityName)
-        {
-            var trips = await _context.Trips
-                .Include(o => o.Owner)
-                .Include(o => o.FromCity)
-                .Include(o => o.ToCity)
-                .Where(t => t.FromCity.CityName.ToLower().Trim() == fromCityName.ToLower().Trim())
-                .Include(p => p.Passangers)
-                .ToListAsync();
-
-            return Ok(trips);
-        }
+       
 
 
 
@@ -239,6 +213,17 @@ namespace DiniM3ak.Controllers
                 return BadRequest("the user try to join the trip is not found");
 
 
+            if (trip.OwnerId == user.Id)
+                return BadRequest("You can't join your own trip");
+
+
+            AppUser? isPassangerAlreadyExist = trip.Passangers.Where(t => t.Id == user.Id).FirstOrDefault();
+
+            if (isPassangerAlreadyExist is not null)
+                return BadRequest("Passanger already exist");
+
+
+
             trip.RemainingSeats -= 1;
             trip.Passangers.Add(user);
              _context.Trips.Update(trip);
@@ -252,14 +237,25 @@ namespace DiniM3ak.Controllers
 
 
         [HttpGet("query")]
-        public async Task<ActionResult<List<Trip>>> QueryTrip([FromQuery] string fromCityName, [FromQuery] string destinationCity)
+        public async Task<ActionResult<List<Trip>>> QueryTrip([FromQuery] string fromCityName, [FromQuery] string destinationCity , [FromQuery] DateTime tripDate)
         {
+
+
+            AppUser? appUser = _authUtils.GetLoggedInUser(HttpContext);
+
+            if(appUser == null)
+                return BadRequest();
+           
+
             var trips = await _context.Trips
+                 .Include(p => p.Passangers)
+                .Include(o => o.Car)
                 .Include(o => o.Owner)
                 .Include(o => o.FromCity)
                 .Include(o => o.ToCity)
-                .Where(t => t.FromCity.CityName.ToLower().Trim() == fromCityName.ToLower().Trim() && t.ToCity.CityName.ToLower().Trim() == destinationCity.ToLower().Trim())
-                .Include(p => p.Passangers)
+                .Where(o => o.OwnerId != appUser.Id)
+                .Where(t => t.FromCity.CityName.ToLower().Trim() == fromCityName.ToLower().Trim() && t.ToCity.CityName.ToLower().Trim() == destinationCity.ToLower().Trim() && t.TripDate == tripDate.AddDays(1))
+             
                 .ToListAsync();
 
             return Ok(trips);

@@ -74,5 +74,18 @@ namespace DiniM3ak.Controllers
                 .ToListAsync());
 
         }
+
+
+
+        [HttpDelete("{carId}")]
+        public async Task<ActionResult> DeleteCar([FromRoute] Guid carId)
+        {
+            Car? car= await _context.Cars.FindAsync(carId);
+            if (car == null)
+                return NotFound();
+            _context.Cars.Remove(car);
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
     }
 }
